@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { PlusIcon } from "@/components/Icons";
 import type { Copy } from "@/lib/copy";
 
 export function Field({
@@ -166,9 +167,12 @@ export function AddButton({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-full border border-dashed border-primary px-4 py-2 text-sm font-bold text-primary hover:bg-primary/10"
+      className="inline-flex min-h-[4.5rem] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-primary bg-primary/5 px-4 py-4 text-sm font-bold text-primary transition hover:bg-primary/10 sm:w-auto sm:min-w-[9.5rem]"
     >
-      {children}
+      <span className="grid h-9 w-9 place-items-center rounded-full border border-dashed border-primary/50 bg-card">
+        <PlusIcon className="h-5 w-5" />
+      </span>
+      <span>{children}</span>
     </button>
   );
 }

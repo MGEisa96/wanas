@@ -46,7 +46,40 @@ import { LogsTab } from "./LogsTab";
 import { UsersTab } from "./UsersTab";
 import { ImageField } from "./ImageField";
 import { MultiImageField } from "./MultiImageField";
+import {
+  CheckIcon,
+  CopyIcon,
+  PhoneIcon,
+  WhatsAppIcon,
+} from "@/components/Icons";
+import { formatEgyptPhoneDisplay } from "@/lib/phone";
 import { AddButton, Area, BiField, Card, Field, Group, Toggle } from "./fields";
+
+const ORDER_STATUS_TONE: Record<OrderStatus, string> = {
+  new: "bg-warning/15 text-warning ring-warning/25",
+  confirmed: "bg-primary/10 text-primary ring-primary/25",
+  preparing: "bg-chip text-foreground ring-line",
+  shipped: "bg-primary/15 text-primary ring-primary/30",
+  done: "bg-success/15 text-success ring-success/25",
+  cancelled: "bg-error/10 text-error ring-error/25",
+};
+
+const ORDER_ACCENT: Record<OrderStatus, string> = {
+  new: "bg-warning",
+  confirmed: "bg-primary",
+  preparing: "bg-foreground-secondary",
+  shipped: "bg-primary",
+  done: "bg-success",
+  cancelled: "bg-error",
+};
+
+const ORDER_PIPELINE: OrderStatus[] = [
+  "new",
+  "confirmed",
+  "preparing",
+  "shipped",
+  "done",
+];
 
 const TABS = [
   { id: "overview", ar: "نظرة عامة" },
@@ -373,9 +406,12 @@ export function DashboardApp() {
                           )}
                           target="_blank"
                           rel="noreferrer"
-                          className="min-h-10 rounded-full bg-whatsapp px-3 py-1.5 text-xs font-bold text-white"
+                          className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-whatsapp px-3 py-1.5 text-xs font-bold text-white"
+                          title="واتساب"
+                          aria-label="واتساب"
                         >
-                          WA
+                          <WhatsAppIcon className="h-4 w-4" />
+                          واتساب
                         </a>
                       </div>
                     </div>
@@ -563,6 +599,18 @@ function nextOrderStatuses(status: OrderStatus): OrderStatus[] {
   return flow[status] || [];
 }
 
+function relativeTimeAr(ts: number) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "الآن";
+  if (mins < 60) return `منذ ${mins} د`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `منذ ${hours} س`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `منذ ${days} ي`;
+  return new Date(ts).toLocaleDateString("ar-EG", { dateStyle: "medium" });
+}
+
 function OrdersPanel({
   orders,
   owner,
@@ -577,6 +625,14 @@ function OrdersPanel({
   const { settings } = useStore();
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [query, setQuery] = useState("");
+  const counts = useMemo(() => {
+    const map = Object.fromEntries(
+      ORDER_STATUSES.map((s) => [s, 0]),
+    ) as Record<OrderStatus, number>;
+    for (const o of orders) map[o.status] += 1;
+    return map;
+  }, [orders]);
+
   const rows = orders
     .filter((o) => (filter === "all" ? true : o.status === filter))
     .filter((o) => {
@@ -585,130 +641,372 @@ function OrdersPanel({
       return (
         o.number.toLowerCase().includes(q) ||
         o.customer.name.toLowerCase().includes(q) ||
-        o.customer.phone.includes(q)
+        o.customer.phone.includes(q) ||
+        o.customer.city.toLowerCase().includes(q)
       );
     })
     .sort((a, b) => b.createdAt - a.createdAt);
 
   return (
     <Group title={{ ar: "الطلبات", en: "Orders" }}>
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="بحث بالاسم / الموبايل / رقم الطلب"
-        className="w-full rounded-2xl border border-input-border bg-input-background px-4 py-3 text-sm outline-none focus:border-primary"
-      />
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        <button
-          type="button"
-          onClick={() => setFilter("all")}
-          className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold ${
-            filter === "all" ? "bg-primary text-white" : "border border-line"
-          }`}
-        >
-          الكل ({orders.length})
-        </button>
-        {ORDER_STATUSES.map((status) => {
-          const count = orders.filter((o) => o.status === status).length;
-          return (
+      <div className="rounded-2xl border border-line bg-card p-3 sm:p-4">
+        <div className="relative">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="بحث بالاسم / الموبايل / رقم الطلب / المدينة"
+            className="min-h-12 w-full rounded-2xl border border-input-border bg-input-background pe-4 ps-4 text-sm outline-none focus:border-primary"
+          />
+        </div>
+        <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition ${
+              filter === "all"
+                ? "bg-primary text-white shadow-sm"
+                : "border border-line bg-background text-foreground-secondary hover:border-primary/40"
+            }`}
+          >
+            الكل
+            <span className="ms-1.5 tabular-nums opacity-80">
+              {orders.length}
+            </span>
+          </button>
+          {ORDER_STATUSES.map((status) => (
             <button
               key={status}
               type="button"
               onClick={() => setFilter(status)}
-              className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold ${
-                filter === status ? "bg-primary text-white" : "border border-line"
+              className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition ${
+                filter === status
+                  ? "bg-primary text-white shadow-sm"
+                  : "border border-line bg-background text-foreground-secondary hover:border-primary/40"
               }`}
             >
               {ORDER_STATUS_LABELS[status].ar}
-              {count ? ` (${count})` : ""}
+              <span className="ms-1.5 tabular-nums opacity-80">
+                {counts[status]}
+              </span>
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
+
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">لا توجد طلبات مطابقة.</p>
+        <div className="rounded-2xl border border-dashed border-line bg-card/60 px-4 py-10 text-center">
+          <p className="text-sm font-bold">لا توجد طلبات مطابقة</p>
+          <p className="mt-1 text-xs text-muted">
+            جرّبي فلترًا آخر أو امسحي البحث
+          </p>
+        </div>
       ) : (
-        rows.map((order) => (
-          <Card key={order.id} title={`${order.number} · ${order.customer.name}`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={`tel:${order.customer.phone}`}
-                className="text-sm font-semibold text-primary"
-                dir="ltr"
-              >
-                {order.customer.phone}
-              </a>
-              <a
-                href={waLink(
-                  `مرحباً ${order.customer.name}، بخصوص طلبك ${order.number} من ونس`,
-                  order.customer.phone.startsWith("01")
-                    ? `20${order.customer.phone.slice(1)}`
-                    : settings.phones.whatsapp,
-                )}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full bg-[#25D366]/15 px-3 py-1.5 text-xs font-bold text-[#128C7E]"
-              >
-                واتساب
-              </a>
-            </div>
-            <p className="text-sm leading-6">
-              {order.items
-                .map((item) => `${item.name.ar} × ${item.qty}`)
-                .join(" · ")}
-            </p>
-            {order.customer.address ? (
-              <p className="text-xs text-muted">
-                {order.customer.city} — {order.customer.address}
-              </p>
-            ) : null}
-            <p className="text-sm font-bold text-primary">
-              {formatEgp(order.totals.total, "ar")} ·{" "}
-              {PAYMENT_LABELS[order.paymentMethod].ar}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {nextOrderStatuses(order.status).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => void onStatus(order.id, status)}
-                  className="min-h-10 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary"
-                >
-                  ← {ORDER_STATUS_LABELS[status].ar}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <label className="flex min-h-11 items-center gap-2 text-sm">
-                <span className="text-muted">الحالة</span>
-                <select
-                  value={order.status}
-                  onChange={(e) =>
-                    void onStatus(order.id, e.target.value as OrderStatus)
-                  }
-                  className="min-h-11 flex-1 rounded-xl border border-input-border bg-input-background px-3 py-2 sm:flex-none"
-                >
-                  {ORDER_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {ORDER_STATUS_LABELS[status].ar}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {owner ? (
-                <button
-                  type="button"
-                  onClick={() => void onDelete(order.id)}
-                  className="min-h-11 text-sm text-error"
-                >
-                  حذف
-                </button>
-              ) : null}
-            </div>
-          </Card>
-        ))
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-muted">
+            عرض {rows.length} من {orders.length}
+          </p>
+          {rows.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              owner={owner}
+              whatsappFallback={settings.phones.whatsapp}
+              onStatus={onStatus}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
       )}
     </Group>
+  );
+}
+
+function OrderCard({
+  order,
+  owner,
+  whatsappFallback,
+  onStatus,
+  onDelete,
+}: {
+  order: Order;
+  owner: boolean;
+  whatsappFallback: string;
+  onStatus: (id: string, status: OrderStatus) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [copied, setCopied] = useState(false);
+  const phoneDisplay = formatEgyptPhoneDisplay(order.customer.phone);
+  const waDigits = order.customer.phone.startsWith("01")
+    ? `20${order.customer.phone.slice(1)}`
+    : whatsappFallback;
+  const itemCount = order.items.reduce((sum, item) => sum + item.qty, 0);
+  const next = nextOrderStatuses(order.status);
+  const pipelineIndex =
+    order.status === "cancelled"
+      ? -1
+      : ORDER_PIPELINE.indexOf(order.status);
+
+  async function copyNumber() {
+    try {
+      await navigator.clipboard.writeText(order.number);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <article className="overflow-hidden rounded-3xl border border-line bg-card shadow-[0_12px_32px_-24px_rgba(60,40,30,0.45)]">
+      <div className={`h-1.5 w-full ${ORDER_ACCENT[order.status]}`} />
+
+      <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4 sm:px-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-extrabold tracking-tight">
+              {order.number}
+            </h3>
+            <button
+              type="button"
+              onClick={() => void copyNumber()}
+              className="inline-flex h-8 items-center gap-1 rounded-full border border-line bg-background px-2.5 text-[11px] font-bold text-muted hover:text-primary"
+              aria-label="نسخ رقم الطلب"
+            >
+              {copied ? (
+                <CheckIcon className="h-3.5 w-3.5 text-success" />
+              ) : (
+                <CopyIcon className="h-3.5 w-3.5" />
+              )}
+              {copied ? "تم" : "نسخ"}
+            </button>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${ORDER_STATUS_TONE[order.status]}`}
+            >
+              {ORDER_STATUS_LABELS[order.status].ar}
+            </span>
+          </div>
+          <p className="mt-1.5 text-sm font-bold">{order.customer.name}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {relativeTimeAr(order.createdAt)} ·{" "}
+            {new Date(order.createdAt).toLocaleString("ar-EG", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-primary/8 px-4 py-3 text-end">
+          <p className="text-[11px] font-bold text-muted">الإجمالي</p>
+          <p className="text-xl font-extrabold text-primary tabular-nums">
+            {formatEgp(order.totals.total, "ar")}
+          </p>
+          <p className="mt-1 text-[11px] font-semibold text-foreground-secondary">
+            {PAYMENT_LABELS[order.paymentMethod].ar}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted">
+            {itemCount} قطعة ·{" "}
+            {order.fulfillment === "pickup" ? "استلام من المحل" : "توصيل"}
+          </p>
+        </div>
+      </div>
+
+      {order.status !== "cancelled" ? (
+        <div className="mt-4 px-4 sm:px-5">
+          <div className="flex items-center gap-1">
+            {ORDER_PIPELINE.map((step, index) => {
+              const done = pipelineIndex >= index;
+              const current = pipelineIndex === index;
+              return (
+                <div key={step} className="flex min-w-0 flex-1 items-center gap-1">
+                  <div
+                    className={`h-2 flex-1 rounded-full ${
+                      done ? ORDER_ACCENT[step] : "bg-line"
+                    } ${current ? "ring-2 ring-primary/25" : ""}`}
+                    title={ORDER_STATUS_LABELS[step].ar}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-1.5 flex justify-between text-[10px] font-semibold text-muted">
+            <span>جديد</span>
+            <span>مكتمل</span>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 px-4 text-xs font-bold text-error sm:px-5">
+          هذا الطلب ملغي
+        </p>
+      )}
+
+      <div className="mt-4 grid gap-4 border-t border-line/70 px-4 py-4 sm:px-5 lg:grid-cols-2">
+        <div className="space-y-2.5">
+          <p className="text-[11px] font-extrabold tracking-wide text-muted">
+            العميل
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href={`tel:${order.customer.phone}`}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-2xl border border-line bg-background px-2 text-xs font-bold text-primary transition hover:border-primary/40"
+            >
+              <PhoneIcon className="h-3.5 w-3.5" />
+              اتصال
+            </a>
+            <a
+              href={waLink(
+                `مرحباً ${order.customer.name}، بخصوص طلبك ${order.number} من ونس`,
+                waDigits,
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-2xl bg-[#25D366] px-2 text-xs font-bold text-white transition hover:brightness-95"
+            >
+              <WhatsAppIcon className="h-4 w-4" />
+              واتساب
+            </a>
+          </div>
+          <p
+            className="rounded-2xl border border-line bg-background px-3 py-2 text-sm font-bold text-primary"
+            dir="ltr"
+          >
+            {phoneDisplay}
+          </p>
+          {(order.customer.city || order.customer.address) && (
+            <p className="rounded-2xl bg-chip/70 px-3 py-2.5 text-xs leading-5 text-foreground-secondary">
+              <span className="font-extrabold text-foreground">العنوان · </span>
+              {[order.customer.city, order.customer.address]
+                .filter(Boolean)
+                .join(" — ")}
+            </p>
+          )}
+          {order.customer.notes ? (
+            <p className="rounded-2xl border border-dashed border-warning/40 bg-warning/5 px-3 py-2.5 text-xs leading-5 text-foreground-secondary">
+              <span className="font-extrabold text-warning">ملاحظة · </span>
+              {order.customer.notes}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-2.5">
+          <p className="text-[11px] font-extrabold tracking-wide text-muted">
+            المنتجات ({itemCount})
+          </p>
+          {order.items.length === 0 ? (
+            <p className="text-xs text-muted">لا توجد أصناف.</p>
+          ) : (
+            <ul className="space-y-2">
+              {order.items.map((item) => (
+                <li
+                  key={`${order.id}-${item.productId}-${item.name.ar}`}
+                  className="flex items-center gap-3 rounded-2xl border border-line/80 bg-background p-2"
+                >
+                  <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-chip">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.image || "/assets/logo.jpeg"}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold">
+                      {item.name.ar}
+                    </span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                      <span>× {item.qty}</span>
+                      <span>·</span>
+                      <span>{formatEgp(item.price, "ar")} للقطعة</span>
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-extrabold text-primary tabular-nums">
+                    {formatEgp(item.price * item.qty, "ar")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="rounded-2xl bg-chip/60 px-3 py-2 text-xs text-muted">
+            <div className="flex justify-between gap-3">
+              <span>المنتجات</span>
+              <span className="font-bold tabular-nums text-foreground">
+                {formatEgp(order.totals.subtotal, "ar")}
+              </span>
+            </div>
+            <div className="mt-1 flex justify-between gap-3">
+              <span>الشحن</span>
+              <span className="font-bold tabular-nums text-foreground">
+                {order.totals.shipping > 0
+                  ? formatEgp(order.totals.shipping, "ar")
+                  : "مجاني"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-line/80 bg-chip/35 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex flex-wrap gap-2">
+          {next.map((status) => {
+            const cancel = status === "cancelled";
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => void onStatus(order.id, status)}
+                className={`inline-flex min-h-11 items-center rounded-full px-4 text-xs font-bold transition ${
+                  cancel
+                    ? "border border-error/35 bg-error/10 text-error hover:bg-error/15"
+                    : "bg-primary text-white hover:bg-primary-hover"
+                }`}
+              >
+                ← {ORDER_STATUS_LABELS[status].ar}
+              </button>
+            );
+          })}
+          {next.length === 0 ? (
+            <span className="inline-flex min-h-11 items-center text-xs font-semibold text-muted">
+              لا خطوات سريعة متاحة
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-line bg-background px-3 text-sm">
+            <span className="text-[11px] font-bold text-muted">الحالة</span>
+            <select
+              value={order.status}
+              onChange={(e) =>
+                void onStatus(order.id, e.target.value as OrderStatus)
+              }
+              className="min-h-10 bg-transparent text-sm font-bold outline-none"
+            >
+              {ORDER_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {ORDER_STATUS_LABELS[status].ar}
+                </option>
+              ))}
+            </select>
+          </label>
+          {owner ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `حذف الطلب ${order.number}؟ لا يمكن التراجع.`,
+                  )
+                ) {
+                  void onDelete(order.id);
+                }
+              }}
+              className="min-h-11 rounded-2xl border border-error/35 px-3.5 text-sm font-bold text-error hover:bg-error/10"
+            >
+              حذف
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 

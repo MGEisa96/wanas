@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { use, useMemo, useRef, useState } from "react";
+import { WhatsAppIcon } from "@/components/Icons";
 import { LazyImage } from "@/components/shop/LazyImage";
 import { StoreShell } from "@/components/shop/StoreShell";
 import { formatEgp, productImage, waLink } from "@/lib/commerce";
@@ -227,10 +228,11 @@ export default function ProductPage({
             )}
             target="_blank"
             rel="noreferrer"
-            className="grid min-h-12 min-w-12 place-items-center rounded-full border border-line text-xs font-bold"
-            aria-label="WhatsApp"
+            className="grid min-h-12 min-w-12 place-items-center rounded-full bg-[#25D366] text-white"
+            aria-label={lang === "ar" ? "واتساب" : "WhatsApp"}
+            title={lang === "ar" ? "واتساب" : "WhatsApp"}
           >
-            WA
+            <WhatsAppIcon className="h-5 w-5" />
           </a>
         </div>
       </div>
